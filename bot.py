@@ -1,25 +1,34 @@
+import asyncio
 import logging
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import WebAppInfo
+import sys
+from aiogram import Bot, Dispatcher
+from aiogram.filters import CommandStart
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 
-# Данные авторизации и ссылка успешно обновлены
+# Ваши данные уже встроены
 API_TOKEN = '8702561950:AAHE4kktONgbRzik8ayC7rUUONukkahhU3o'
-WEB_APP_URL = 'github.io' 
+WEB_APP_URL = 'github.io'
 
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()
 
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+@dp.message(CommandStart())
+async def command_start_handler(message: Message) -> None:
     web_app = WebAppInfo(url=WEB_APP_URL)
-    keyboard.add(types.KeyboardButton(text="🎬 Open Movie Library", web_app=web_app))
-    
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🎬 Open Movie Library", web_app=web_app)]
+        ],
+        resize_keyboard=True
+    )
     await message.answer(
         "Welcome! Click the button below to watch free English movies and TV Shows.",
         reply_markup=keyboard
     )
 
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+async def main() -> None:
+    bot = Bot(token=API_TOKEN)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    asyncio.run(main())
