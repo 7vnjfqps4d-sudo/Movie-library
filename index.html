@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Movies & TV Shows</title>
+    <script src="telegram.org"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 12px;
+            padding-bottom: 80px;
+        }
+        .search-box {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .search-box input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #1e293b;
+            color: white;
+            font-size: 16px;
+        }
+        .categories {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .categories::-webkit-scrollbar { display: none; }
+        .category-btn {
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            padding: 6px 14px;
+            border-radius: 20px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .category-btn.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        .movie-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        .movie-card {
+            background: #1e293b;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        .movie-card img {
+            width: 100%;
+            height: 230px;
+            object-fit: cover;
+            cursor: pointer;
+        }
+        .fav-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(15, 23, 42, 0.75);
+            border: none;
+            color: #94a3b8;
+            font-size: 18px;
+            padding: 6px 8px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+            line-height: 1;
+        }
+        .fav-btn.active { color: #ef4444; }
+        .movie-info { padding: 8px; cursor: pointer; }
+        .movie-title {
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .movie-rating { font-size: 12px; color: #fbbf24; margin-top: 4px; }
+        
+        .tab-bar {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: 60px;
+            background: #1e293b;
+            border-top: 1px solid #334155;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 100;
+        }
+        .tab-item {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+        .tab-item.active { color: #3b82f6; }
+        .tab-item span { font-size: 20px; }
+
+        #player-container {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            z-index: 1000;
+            flex-direction: column;
+        }
+        iframe { width: 100%; flex: 1; border: none; }
+        .close-btn {
+            background: #ef4444; color: white; border: none;
+            padding: 12px; font-size: 16px; font-weight: bold; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="search-box" id="search-container">
+        <input type="text" id="search-input" placeholder="Search...">
+    </div>
+
+    <div class="categories" id="categories-container">
+        <button class="category-btn active" onclick="changeCategory('popular', this)">⚡ Popular</button>
+        <button class="category-btn" onclick="changeCategory('action', this)">🎬 Action</button>
+        <button class="category-btn" onclick="changeCategory('comedy', this)">😂 Comedy</button>
+        <button class="category-btn" onclick="changeCategory('scifi', this)">🚀 Sci-Fi</button>
+    </div>
+
+    <div class="movie-grid" id="content-grid"></div>
+
+    <div class="tab-bar">
+        <button class="tab-item active" onclick="switchTab('movie', this)">
+            <span>🎥</span>Movies
+        </button>
+        <button class="tab-item" onclick="switchTab('tv', this)">
+            <span>📺</span>TV Shows
+        </button>
+        <button class="tab-item" onclick="switchTab('favorites', this)">
+            <span>❤️</span>Favorites
+        </button>
+    </div>
+
+    <div id="player-container">
+        <button class="close-btn" onclick="closePlayer()">✕ Close Player</button>
+        <iframe id="video-iframe" allowfullscreen></iframe>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // Ключ API успешно обновлен
+        const TMDB_API_KEY = 'db83aa59e0bff159b90a027511844b9a'; 
+        const BASE_URL = 'themoviedb.org';
+        const IMG_URL = 'tmdb.org';
+
+        let currentTab = 'movie'; 
+        let currentGenre = 'popular';
+        let favorites = JSON.parse(localStorage.getItem('tg_favs')) || [];
+
+        const genreMap = {
+            movie: { action: '28', comedy: '35', scifi: '878' },
+            tv: { action: '10759', comedy: '35', scifi: '10765' }
+        };
+
+        loadContent();
+
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            if (query.length > 2) {
+                searchContent(query);
+            } else if (query.length === 0) {
+                loadContent();
+            }
+        });
+
+        function switchTab(tab, button) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-item').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            const searchBox = document.getElementById('search-container');
+            const catBox = document.getElementById('categories-container');
+            document.getElementById('search-input').value = '';
+
+            if (tab === 'favorites') {
+                searchBox.style.display = 'none';
+                catBox.style.display = 'none';
+                renderFavorites();
+            } else {
+                searchBox.style.display = 'flex';
+                catBox.style.display = 'flex';
+                currentGenre = 'popular';
+                document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+                document.querySelector('.category-btn').classList.add('active');
+                loadContent();
+            }
+        }
+
+        function changeCategory(genre, button) {
+            currentGenre = genre;
+            document.querySelectorAll('.category-btn').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            document.getElementById('search-input').value = '';
+            loadContent();
+        }
+
+        async function loadContent() {
+            let url = `${BASE_URL}/${currentTab}/popular?api_key=${TMDB_API_KEY}&language=en-US&page=1`;
+            if (currentGenre !== 'popular') {
+                const genreId = genreMap[currentTab][currentGenre];
+                url = `${BASE_URL}/discover/${currentTab}?api_key=${TMDB_API_KEY}&with_genres=${genreId}&language=en-US&sort_by=popularity.desc`;
+            }
+            fetchData(url);
+        }
+
+        async function searchContent(query) {
+            const url = `${BASE_URL}/search/${currentTab}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=en-US`;
+            fetchData(url);
+        }
+
+        async function fetchData(url) {
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                renderCards(data.results);
+            } catch (error) {
+                console.error("Fetch Error:", error);
+            }
+        }
+
+        function renderCards(items) {
+            const grid = document.getElementById('content-grid');
+            grid.innerHTML = '';
+
+            items.forEach(item => {
+                if (!item.poster_path) return;
+                const title = item.title || item.name;
+                const isFav = favorites.some(f => f.id === item.id && f.type === currentTab);
+
+                const card = document.createElement('div');
+                card.className = 'movie-card';
+                card.innerHTML = `
+                    <button class="fav-btn ${isFav ? 'active' : ''}" onclick="toggleFavorite(${item.id}, '${currentTab}', '${title.replace(/'/g, "&apos;")}', '${item.poster_path}', ${item.vote_average}, event)">
+                        ${isFav ? '❤️' : '🤍'}
+                    </button>
+                    <img src="${IMG_URL + item.poster_path}" onclick="openPlayer('${currentTab}', ${item.id})">
+                    <div class="movie-info" onclick="openPlayer('${currentTab}', ${item.id})">
+                        <div class="movie-title">${title}</div>
+                        <div class="movie-rating">★ ${item.vote_average.toFixed(1)}</div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function toggleFavorite(id, type, title, poster_path, vote_average, event) {
+            event.stopPropagation();
+            const index = favorites.findIndex(f => f.id === id && f.type === type);
+
+            if (index > -1) {
+                favorites.splice(index, 1);
+                event.target.innerHTML = '🤍';
+                event.target.classList.remove('active');
+            } else {
+                favorites.push({ id, type, title, poster_path, vote_average });
+                event.target.innerHTML = '❤️';
+                event.target.classList.add('active');
+            }
+
+            localStorage.setItem('tg_favs', JSON.stringify(favorites));
+            if (currentTab === 'favorites') renderFavorites();
+        }
+
+        function renderFavorites() {
+            const grid = document.getElementById('content-grid');
+            grid.innerHTML = '';
+
+            if (favorites.length === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #94a3b8; margin-top: 40px;">Your Favorites list is empty</div>';
+                return;
+            }
+
+            favorites.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'movie-card';
+                card.innerHTML = `
+                    <button class="fav-btn active" onclick="toggleFavorite(${item.id}, '${item.type}', '${item.title.replace(/'/g, "&apos;")}', '${item.poster_path}', ${item.vote_average}, event)">
+                        ❤️
+                    </button>
+                    <img src="${IMG_URL + item.poster_path}" onclick="openPlayer('${item.type}', ${item.id})">
+                    <div class="movie-info" onclick="openPlayer('${item.type}', ${item.id})">
+                        <div class="movie-title">${item.title} <span style="font-size:10px; color:#94a3b8;">(${item.type.toUpperCase()})</span></div>
+                        <div class="movie-rating">★ ${item.vote_average.toFixed(1)}</div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function openPlayer(type, id) {
+            const playerContainer = document.getElementById('player-container');
+            const iframe = document.getElementById('video-iframe');
+            const embedPath = type === 'movie' ? 'movie' : 'tv';
+            iframe.src = `vidsrc.to{embedPath}/${id}`;
+            playerContainer.style.display = 'flex';
+        }
+
+        function closePlayer() {
+            const playerContainer = document.getElementById('player-container');
+            const iframe = document.getElementById('video-iframe');
+            iframe.src = '';
+            playerContainer.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
