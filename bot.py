@@ -6,7 +6,7 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from aiohttp import web
 
-API_TOKEN = '8702561950:AAHE4kktONgbRzik8ayC7rUUONukkahhU3o'
+API_TOKEN = '8702561950:AAELkJ_XXDQzlZet5Y2ESW7Zl_cO-YN-QOI'
 WEB_APP_URL = 'github.io'
 
 dp = Dispatcher()
